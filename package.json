@@ -1,0 +1,26 @@
+{
+  "name": "@grafikr/shopify-app-remix",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./adapters/node": "./src/adapters/node/index.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@shopify/admin-api-client": "^2.0.1",
+    "@shopify/shopify-api": "^15.1.1",
+    "@shopify/shopify-app-session-storage": "^7.0.3",
+    "compare-versions": "^6.1.1",
+    "isbot": "^5.2.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "jose": "^6.2.18"
+  }
+}

@@ -1,0 +1,222 @@
+import { JwtPayload, Session } from '@shopify/shopify-api';
+
+import { EnsureCORSFunction } from '../helpers/ensure-cors-headers.ts';
+import type { AppConfigArg } from '../../config-types.ts';
+import type { AdminApiContext } from '../../clients/index.ts';
+import type { AppDistribution } from '../../types.ts';
+
+import type { BillingContext } from './billing/types.ts';
+import { RedirectFunction } from './helpers/redirect.ts';
+import { ScopesApiContext } from './scope/types.ts';
+
+interface AdminContextInternal<Config extends AppConfigArg> {
+  /**
+   * The session for the user who made the request.
+   *
+   * This comes from the session storage which `shopifyApp` uses to store sessions in your database of choice.
+   *
+   * Use this to get shop or user-specific data.
+   *
+   * @example
+   * <caption>Using offline sessions.</caption>
+   * <description>Get your app's shop-specific data using an offline session.</description>
+   * ```ts
+   * // /app/routes/**\/*.ts
+   * import { LoaderFunctionArgs } from "@remix-run/node";
+   * import { authenticate } from "../shopify.server";
+   * import { getMyAppData } from "~/db/model.server";
+   *
+   * export const loader = async ({ request }: LoaderFunctionArgs) => {
+   *   const { session } = await authenticate.admin(request);
+   *   return await getMyAppData({shop: session.shop});
+   * };
+   * ```
+   * ```ts
+   * // shopify.server.ts
+   * import { shopifyApp } from "@grafikr/shopify-app-remix";
+   *
+   * const shopify = shopifyApp({
+   *   // ...etc
+   * });
+   * export default shopify;
+   * export const authenticate = shopify.authenticate;
+   * ```
+   *
+   * @example
+   * <caption>Using online sessions.</caption>
+   * <description>Get your app's user-specific data using an online session.</description>
+   * ```ts
+   * // /app/routes/**\/*.ts
+   * import { LoaderFunctionArgs } from "@remix-run/node";
+   * import { authenticate } from "../shopify.server";
+   * import { getMyAppData } from "~/db/model.server";
+   *
+   * export const loader = async ({ request }: LoaderFunctionArgs) => {
+   *   const { session } = await authenticate.admin(request);
+   *   return await getMyAppData({user: session.onlineAccessInfo!.associated_user.id});
+   * };
+   * ```
+   * ```ts
+   * // shopify.server.ts
+   * import { shopifyApp } from "@grafikr/shopify-app-remix";
+   *
+   * const shopify = shopifyApp({
+   *   // ...etc
+   *   useOnlineTokens: true,
+   * });
+   * export default shopify;
+   * export const authenticate = shopify.authenticate;
+   * ```
+   */
+  session: Session;
+
+  /**
+   * Methods for interacting with the GraphQL / REST Admin APIs for the store that made the request.
+   */
+  admin: AdminApiContext;
+
+  /**
+   * Billing methods for this store, based on the plans defined in the `billing` config option.
+   *
+   * {@link https://shopify.dev/docs/apps/billing}
+   */
+  billing: BillingContext<Config>;
+
+  /**
+   * A function that ensures the CORS headers are set correctly for the response.
+   *
+   * @example
+   * <caption>Setting CORS headers for a admin request.</caption>
+   * <description>Use the `cors` helper to ensure your app can respond to requests from admin extensions.</description>
+   * ```ts
+   * // /app/routes/admin/my-route.ts
+   * import { LoaderFunctionArgs } from "@remix-run/node";
+   * import { authenticate } from "../shopify.server";
+   * import { getMyAppData } from "~/db/model.server";
+   *
+   * export const loader = async ({ request }: LoaderFunctionArgs) => {
+   *   const { session, cors } = await authenticate.admin(request);
+   *   return cors(Response.json(await getMyAppData({user: session.onlineAccessInfo!.associated_user.id})));
+   * };
+   * ```
+   */
+  cors: EnsureCORSFunction;
+}
+
+export interface EmbeddedAdminContext<Config extends AppConfigArg> extends AdminContextInternal<Config> {
+  /**
+   * The decoded and validated session token for the request.
+   *
+   * Returned only for embedded apps (all distribution types except merchant custom apps)
+   *
+   * {@link https://shopify.dev/docs/apps/auth/oauth/session-tokens#payload}
+   *
+   * @example
+   * <caption>Using the decoded session token.</caption>
+   * <description>Get user-specific data using the `sessionToken` object.</description>
+   * ```ts
+   * // /app/routes/**\/*.ts
+   * import { LoaderFunctionArgs } from "@remix-run/node";
+   * import { authenticate } from "../shopify.server";
+   * import { getMyAppData } from "~/db/model.server";
+   *
+   * export const loader = async ({ request }: LoaderFunctionArgs) => {
+   *   const { sessionToken } = await authenticate.admin(
+   *     request
+   *   );
+   *   return await getMyAppData({user: sessionToken.sub});
+   * };
+   * ```
+   * ```ts
+   * // shopify.server.ts
+   * import { shopifyApp } from "@grafikr/shopify-app-remix";
+   *
+   * const shopify = shopifyApp({
+   *   // ...etc
+   *   useOnlineTokens: true,
+   * });
+   * export default shopify;
+   * export const authenticate = shopify.authenticate;
+   * ```
+   */
+  sessionToken: JwtPayload;
+
+  /**
+   * A function that redirects the user to a new page, ensuring that the appropriate parameters are set for embedded
+   * apps.
+   *
+   * Returned only for embedded apps (all apps except merchant custom apps).
+   *
+   * Request parameters (including `id_token`, `shop`, `host`, and `embedded`) are only copied to the destination when
+   * it resolves to the same origin as `appUrl`. This helper does not validate the destination URL — avoid passing
+   * unvalidated user input (for example, a raw `?next=` query parameter) and use an allow-list of paths instead.
+   *
+   * @example
+   * <caption>Redirecting to an app route.</caption>
+   * <description>Use the `redirect` helper to safely redirect between pages.</description>
+   * ```ts
+   * // /app/routes/admin/my-route.ts
+   * import { LoaderFunctionArgs } from "@remix-run/node";
+   * import { authenticate } from "../shopify.server";
+   *
+   * export const loader = async ({ request }: LoaderFunctionArgs) => {
+   *   const { session, redirect } = await authenticate.admin(request);
+   *   return redirect("/");
+   * };
+   * ```
+   *
+   * @example
+   * <caption>Redirecting to a page in the Shopify Admin.</caption>
+   * <description>Redirects to a product page in the Shopify admin. Pass in a `target` option of `_top` or `_parent` to navigate in the current window, or `_blank` to open a new tab.</description>
+   * ```ts
+   * // /app/routes/admin/my-route.ts
+   * import { LoaderFunctionArgs } from "@remix-run/node";
+   * import { authenticate } from "../shopify.server";
+   *
+   * export const loader = async ({ request }: LoaderFunctionArgs) => {
+   *   const { session, redirect } = await authenticate.admin(request);
+   *   return redirect("shopify://admin/products/123456", { target: '_parent' });
+   * };
+   * ```
+   *
+   * @example
+   * <caption>Redirecting outside of the Admin embedded app page.</caption>
+   * <description>Pass in a `target` option of `_top` or `_parent` to navigate in the current window, or `_blank` to open a new tab.</description>
+   * ```ts
+   * // /app/routes/admin/my-route.ts
+   * import { LoaderFunctionArgs } from "@remix-run/node";
+   * import { authenticate } from "../shopify.server";
+   *
+   * export const loader = async ({ request }: LoaderFunctionArgs) => {
+   *   const { session, redirect } = await authenticate.admin(request);
+   *   return redirect("/", { target: '_parent' });
+   * };
+   * ```
+   */
+  redirect: RedirectFunction;
+}
+export interface MerchantCustomAdminContext<Config extends AppConfigArg> extends AdminContextInternal<Config> {}
+
+type EmbeddedTypedAdminContext<Config extends AppConfigArg> =
+  Config['distribution'] extends AppDistribution.ShopifyAdmin
+    ? MerchantCustomAdminContext<Config>
+    : EmbeddedAdminContext<Config>;
+
+export interface ScopesContext {
+  /**
+   * Methods to manage scopes for the store that made the request.
+   */
+  scopes: ScopesApiContext;
+}
+
+export type AdminContext<Config extends AppConfigArg> = EmbeddedTypedAdminContext<Config> & ScopesContext;
+
+/**
+ * Authenticates requests coming from the Shopify admin.
+ *
+ * > Note: The shape of the returned object changes depending on the `distribution` config. Merchant custom apps (`AppDistribution.ShopifyAdmin`) do not return session tokens or redirect functionality. All other distributions return a context with session tokens and redirect functionality.
+ *
+ * > Caution: For merchant custom apps (`AppDistribution.ShopifyAdmin`), `authenticate.admin` does not authenticate the request. These apps can't be embedded in the Shopify admin, so requests don't carry a session token. The function returns an Admin API context that uses your app's `adminApiAccessToken` for any request it receives. Your app must authenticate its own users before it calls `authenticate.admin`, for example with your identity provider, a private network, or HTTP authentication.
+ * @publicDocs
+ */
+export type AuthenticateAdmin<Config extends AppConfigArg> = (request: Request) => Promise<AdminContext<Config>>;
