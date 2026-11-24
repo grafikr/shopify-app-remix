@@ -1,17 +1,53 @@
 {
   "name": "@grafikr/shopify-app-remix",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./adapters/node": "./src/adapters/node/index.ts",
-    "./adapters/vercel": "./src/adapters/vercel/index.ts",
-    "./types": "./src/types.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./adapters/node": {
+      "types": "./dist/adapters/node/index.d.ts",
+      "default": "./dist/adapters/node/index.js"
+    },
+    "./adapters/vercel": {
+      "types": "./dist/adapters/vercel/index.d.ts",
+      "default": "./dist/adapters/vercel/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run build",
+    "release": "release-it",
+    "release:test": "release-it --preRelease=test"
+  },
+  "release-it": {
+    "git": {
+      "commitMessage": "Release ${version}",
+      "tagName": "v${version}",
+      "requireBranch": false
+    },
+    "github": {
+      "release": false
+    },
+    "npm": {
+      "publish": true
+    }
   },
   "dependencies": {
     "@shopify/admin-api-client": "^2.0.1",
@@ -22,6 +58,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "jose": "^6.2.18"
+    "jose": "^6.2.18",
+    "release-it": "^21.1.3",
+    "typescript": "^7.0.2"
   }
 }
